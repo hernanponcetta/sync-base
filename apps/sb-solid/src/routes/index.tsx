@@ -1,6 +1,13 @@
 import { Title } from "@solidjs/meta"
+import { createAsync } from "@solidjs/router"
+
+import { sb } from "~/sb-client"
+
+let getTodos = () => sb.query.todos.findMany({})
 
 export default function Home() {
+  let todos = createAsync(() => getTodos())
+
   return (
     <div class="bg-stone-900 h-svh text-stone-100 font-mono py-10">
       <Title>Sync Base Solid</Title>
