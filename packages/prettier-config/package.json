@@ -1,0 +1,11 @@
+{
+  "name": "@sync-base/prettier-config",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "license": "ISC",
+  "packageManager": "pnpm@10.4.1",
+  "peerDependencies": {
+    "prettier": "3.5.2"
+  }
+}
