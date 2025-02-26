@@ -3,6 +3,7 @@ import { getTableColumns, getTableName } from "drizzle-orm"
 import type { SyncBaseConstructorParams } from "./client"
 
 export const columnDataTypes = ["string", "number", "boolean", "date", "bigint"] as const
+export const changesIndexes = ["syncId", "objectId", "objectStore", "synced"] as const
 
 export function createDBConnection<T extends SyncBaseConstructorParams["tables"]>(tables: T) {
   return (): Promise<IDBDatabase> => {
@@ -17,25 +18,24 @@ export function createDBConnection<T extends SyncBaseConstructorParams["tables"]
           keyPath: "id",
         })
 
-        transactions.createIndex("syncId", "syncId")
-        transactions.createIndex("objectId", "objectId")
-        transactions.createIndex("objectStore", "objectStore")
-        transactions.createIndex("synced", "synced")
+        for (let index of changesIndexes) {
+          transactions.createIndex(index, index)
+        }
 
-        tables.forEach((table) => {
+        for (let table of tables) {
           let tableName = getTableName(table)
           let columns = Object.values(getTableColumns(table))
           let primaryKey = columns.find((column) => column.primary)!.name
 
           let objectStore = db.createObjectStore(tableName, { keyPath: primaryKey })
 
-          columns
-            .filter((column) => columnDataTypes.includes(column.dataType) && !column.primary)
-            .forEach((column) => {
+          for (let column of columns) {
+            if (columnDataTypes.includes(column.dataType) && !column.primary) {
               let columnName = column.name
               objectStore.createIndex(columnName, columnName)
-            })
-        })
+            }
+          }
+        }
       }
 
       openRequest.onsuccess = function () {
