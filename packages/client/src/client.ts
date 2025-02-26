@@ -1,22 +1,27 @@
-import type { Table } from "drizzle-orm"
+import { getTableName, Table } from "drizzle-orm"
 
-import { mutationBuilder, type SyncBaseMutation } from "./mutation"
-import { queryBuilder, type SyncBaseQuery } from "./query"
+import { createDBConnection } from "./indexeddb"
+import { createTable } from "./table"
 
 export type SyncBaseConstructorParams = {
   tables: Table[]
 }
 
-type SyncBase<T extends SyncBaseConstructorParams> = {
-  mutation: SyncBaseMutation<T["tables"]>
-  query: SyncBaseQuery<T["tables"]>
+// type SyncBase<T extends SyncBaseConstructorParams> = SyncBaseTables<T["tables"]>
+
+export function syncBase<T extends SyncBaseConstructorParams>(
+  params: T,
+): SyncBaseTables<T["tables"]> {
+  let { tables } = params
+  return createTables(tables)
 }
 
-export function syncBase<T extends SyncBaseConstructorParams>(params: T): SyncBase<T> {
-  let { tables } = params
+export type SyncBaseTables<T extends SyncBaseConstructorParams["tables"]> = {
+  [K in T[number] as ReturnType<typeof getTableName<K>>]: ReturnType<typeof createTable<K>>
+}
 
-  return {
-    mutation: mutationBuilder(tables),
-    query: queryBuilder(tables),
-  }
+export function createTables<T extends Table[]>(tables: T): SyncBaseTables<T> {
+  return Object.fromEntries(
+    tables.map((table) => [getTableName(table), createTable(createDBConnection(tables), table)]),
+  ) as any
 }

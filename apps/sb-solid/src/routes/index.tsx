@@ -4,10 +4,10 @@ import { For } from "solid-js"
 
 import { sb } from "~/sb-client"
 
-let getTodos = query(() => sb.query.todos.findMany(), "usersById")
+let getTodos = query(() => sb.todos.findMany(), "getTodos")
 
 let addTodo = action(async (formData: FormData) => {
-  await sb.mutation.todos.insert({
+  await sb.todos.insert({
     description: String(formData.get("description")),
     id: crypto.randomUUID(),
   })
