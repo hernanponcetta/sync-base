@@ -30,10 +30,13 @@ export function createDBConnection<T extends SyncBaseConstructorParams["tables"]
           let objectStore = db.createObjectStore(tableName, { keyPath: primaryKey })
 
           for (let column of columns) {
-            if (columnDataTypes.includes(column.dataType) && !column.primary) {
-              let columnName = column.name
-              objectStore.createIndex(columnName, columnName)
-            }
+            let isNotPrimitiveColumn = !columnDataTypes.includes(column.dataType)
+            let isPrimaryColumn = column.primary
+
+            if (isNotPrimitiveColumn || isPrimaryColumn) continue
+
+            let columnName = column.name
+            objectStore.createIndex(columnName, columnName)
           }
         }
       }
