@@ -1,6 +1,5 @@
 import type { Table } from "drizzle-orm"
 
-import { createDB } from "./indexeddb"
 import { mutationBuilder, type SyncBaseMutation } from "./mutation"
 import { queryBuilder, type SyncBaseQuery } from "./query"
 
@@ -17,7 +16,7 @@ export function syncBase<T extends SyncBaseConstructorParams>(params: T): SyncBa
   let { tables } = params
 
   return {
-    mutation: mutationBuilder(createDB(tables), tables),
-    query: queryBuilder(createDB(tables), tables),
+    mutation: mutationBuilder(tables),
+    query: queryBuilder(tables),
   }
 }

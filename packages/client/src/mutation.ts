@@ -2,6 +2,8 @@ import { getTableColumns, getTableName, type InferInsertModel, type Table } from
 
 import type { SyncBaseConstructorParams } from "./client"
 
+import { createDBConnection } from "./indexeddb"
+
 type Change<T, K extends keyof T> =
   | {
       id: string
@@ -24,15 +26,16 @@ type Change<T, K extends keyof T> =
     }
 
 export function createTableMutations<T extends Table>(
-  db: () => Promise<IDBDatabase>,
+  connectToDB: () => Promise<IDBDatabase>,
   table: Table,
 ) {
   let tableName = getTableName(table)
   let columns = getTableColumns(table)
+  let primaryKey = Object.values(columns).find((column) => column.primary)!.name
 
   return {
     async insert(params: InferInsertModel<T>): Promise<void> {
-      let dbRequest = await db()
+      let db = await connectToDB()
 
       return new Promise((resolve, reject) => {
         let values = Object.fromEntries(
@@ -41,15 +44,15 @@ export function createTableMutations<T extends Table>(
           }),
         )
 
-        let transaction = dbRequest.transaction("_changes", "readwrite", { durability: "relaxed" })
+        let transaction = db.transaction("_changes", "readwrite", { durability: "relaxed" })
         let objectStore = transaction.objectStore("_changes")
 
         let request = objectStore.add({
-          id: "someId",
           object: values,
-          objectId: values.id,
+          objectId: values[primaryKey],
           objectStore: tableName,
           synced: false,
+          syncId: crypto.randomUUID(),
           type: "insert",
         })
 
@@ -65,7 +68,7 @@ export function createTableMutations<T extends Table>(
     },
 
     async update(params: Partial<InferInsertModel<T>>) {
-      let dbRequest = await db()
+      let dbRequest = await connectToDB()
 
       return new Promise<string>((resolve, reject) => {
         let transaction = dbRequest.transaction("_changes", "readwrite", { durability: "relaxed" })
@@ -116,19 +119,19 @@ export function createTableMutations<T extends Table>(
           let objectStore = transaction.objectStore("_changes")
 
           let addChangeRequest = objectStore.add({
-            id: createId(),
+            id: crypto.randomUUID(),
             objectId: id,
             objectStore: schema.type,
             snapShot: changesSnapshot,
             type: "update",
           })
 
-          addChangeRequest.onsuccess = function () {
-            new CustomEvent("sync-base", { detail: { id: values.id } })
-            window.dispatchEvent(new CustomEvent("sync-base", { detail: { id: values.id } }))
+          // addChangeRequest.onsuccess = function () {
+          //   new CustomEvent("sync-base", { detail: { id: values.id } })
+          //   window.dispatchEvent(new CustomEvent("sync-base", { detail: { id: values.id } }))
 
-            resolve(id)
-          }
+          //   resolve(id)
+          // }
 
           addChangeRequest.onerror = function () {
             reject(addChangeRequest.error)
@@ -147,11 +150,11 @@ export type SyncBaseMutation<T extends SyncBaseConstructorParams["tables"]> = {
   [K in T[number] as ReturnType<typeof getTableName<K>>]: ReturnType<typeof createTableMutations<K>>
 }
 
-export function mutationBuilder<T extends Table[]>(
-  db: () => Promise<IDBDatabase>,
-  tables: T,
-): SyncBaseMutation<T> {
+export function mutationBuilder<T extends Table[]>(tables: T): SyncBaseMutation<T> {
   return Object.fromEntries(
-    tables.map((table) => [getTableName(table), createTableMutations(db, table)]),
+    tables.map((table) => [
+      getTableName(table),
+      createTableMutations(createDBConnection(tables), table),
+    ]),
   ) as any
 }
