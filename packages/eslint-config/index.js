@@ -16,7 +16,6 @@ export default [
     rules: {
       "perfectionist/sort-exports": "off",
       "perfectionist/sort-modules": "off",
-      "prefer-const": "off",
       "@typescript-eslint/no-explicit-any": "off"
     },
   },

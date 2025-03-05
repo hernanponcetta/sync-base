@@ -1,6 +1,6 @@
 import { getTableName, Table } from "drizzle-orm"
 
-import { createDBConnection } from "./indexeddb"
+import { createDB } from "./indexed-db"
 import { createTable } from "./table"
 
 export type SyncBaseConstructorParams = {
@@ -22,6 +22,6 @@ export type SyncBaseTables<T extends SyncBaseConstructorParams["tables"]> = {
 
 export function createTables<T extends Table[]>(tables: T): SyncBaseTables<T> {
   return Object.fromEntries(
-    tables.map((table) => [getTableName(table), createTable(createDBConnection(tables), table)]),
+    tables.map((table) => [getTableName(table), createTable(createDB(tables), table)]),
   ) as any
 }
