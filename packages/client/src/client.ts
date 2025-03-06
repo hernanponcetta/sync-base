@@ -1,6 +1,6 @@
 import { getTableName, Table } from "drizzle-orm"
 
-import { createDB } from "./indexed-db"
+import { createDB } from "./db"
 import { createTable } from "./table"
 
 export type SyncBaseConstructorParams = {
@@ -12,7 +12,7 @@ export type SyncBaseConstructorParams = {
 export function syncBase<T extends SyncBaseConstructorParams>(
   params: T,
 ): SyncBaseTables<T["tables"]> {
-  let { tables } = params
+  const { tables } = params
   return createTables(tables)
 }
 
@@ -22,6 +22,6 @@ export type SyncBaseTables<T extends SyncBaseConstructorParams["tables"]> = {
 
 export function createTables<T extends Table[]>(tables: T): SyncBaseTables<T> {
   return Object.fromEntries(
-    tables.map((table) => [getTableName(table), createTable(createDB(tables), table)]),
+    tables.map((table) => [getTableName(table), createTable(createDB({ tables }), table)]),
   ) as any
 }

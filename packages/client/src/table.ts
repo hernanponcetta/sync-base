@@ -6,182 +6,130 @@ import {
   Table,
 } from "drizzle-orm"
 
+import { Change } from "./change"
 import { InferSelectModelFiltered } from "./types"
 
-type Change<T, K extends keyof T> =
-  | {
-      id: string
-      object: T
-      objectId: string
-      objectStore: string
-      objectStoreObjectId: string
-      syncId: string
-      type: "insert"
-    }
-  | {
-      id: string
-      objectId: string
-      objectStore: string
-      objectStoreObjectId: string
-      snapShot: {
-        [K in keyof T]: {
-          original: T[K]
-          updated: T[K]
-        }
-      }
-      syncId: string
-      type: "update"
-    }
-  | {
-      id: string
-      objectId: string
-      objectStoreObjectId: string
-      synced: boolean
-      syncId: string
-      type: "delete"
-    }
+type DB = {
+  addChange: <T extends Table>(params: { change: Change<T> }) => Promise<void>
+  getAll: <T extends Table>(params: { table: T }) => Promise<[InferSelectModel<T>[], Change<T>[]]>
+}
+
+export function createTable<T extends Table>(db: DB, table: T) {
+  return {
+    delete: _delete({ db, table }),
+    findMany: _findMany({ db, table }),
+    insert: _insert({ db, table }),
+  }
+}
+
+type FindManyDependencies<T extends Table> = {
+  db: DB
+  table: T
+}
 
 type FindManyParams<T extends Table> = {
   where?: Partial<InferSelectModelFiltered<T>>
 }
 
-export function createTable<T extends Table>(connect: () => Promise<IDBDatabase>, table: Table) {
-  const tableName = getTableName(table)
-  const columns = getTableColumns(table)
-  const primaryKey = Object.values(columns).find((column) => column.primary)!.name
+function _findMany<T extends Table>({ db, table }: FindManyDependencies<T>) {
+  return async (params?: FindManyParams<T>): Promise<InferSelectModel<T>[]> => {
+    const columns = getTableColumns(table)
+    const [, changes] = await db.getAll({ table })
 
-  return {
-    async delete(primaryKey: string): Promise<void> {
-      const db = await connect()
+    const objectMap = new Map()
 
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("_changes", "readwrite", { durability: "relaxed" })
-        const objectStore = transaction.objectStore("_changes")
-
-        const request = objectStore.add({
-          objectId: primaryKey,
-          objectStore: tableName,
-          objectStoreObjectId: [tableName, primaryKey],
-          synced: false,
-          syncId: crypto.randomUUID(),
-          type: "delete",
-        })
-
-        request.onsuccess = function () {
-          console.debug("delete success")
-          // window.dispatchEvent(new CustomEvent("sync-base", { detail: { id: values.id } }))
-          resolve()
-        }
-
-        request.onerror = function () {
-          console.error("delete error", request.error)
-          reject(request.error)
-        }
-      })
-    },
-
-    async findMany(params?: FindManyParams<T>): Promise<InferSelectModel<T>[]> {
-      const db = await connect()
-
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("_changes", "readonly", {
-          durability: "relaxed",
-        })
-
-        const objectStore = transaction.objectStore("_changes").index("objectStore")
-
-        const request = objectStore.getAll(tableName) as IDBRequest<
-          Change<InferSelectModel<T>, keyof InferSelectModel<T>>[]
-        >
-
-        request.onsuccess = () => {
-          const objectMap = new Map()
-
-          for (const change of request.result) {
-            if (change.type === "insert") {
-              objectMap.set(
-                change.objectId,
-                Object.fromEntries(
-                  Object.entries(change.object).map(([key, value]) => [
-                    key,
-                    columns[key].mapFromDriverValue(value),
-                  ]),
-                ),
-              )
-            }
-
-            if (change.type === "update") {
-              const prev = objectMap.get(change.objectId)
-              objectMap.set(change.objectId, {
-                ...prev,
-                ...Object.fromEntries(
-                  Object.entries(change.snapShot.updated).map(([key, value]) => [
-                    key,
-                    columns[key].mapFromDriverValue(value),
-                  ]),
-                ),
-              })
-            }
-
-            if (change.type === "delete") {
-              objectMap.delete(change.objectId)
-            }
-          }
-
-          return resolve(Array.from(objectMap.values()))
-        }
-
-        request.onerror = () => {
-          console.error(request.error)
-          reject(request.error)
-        }
-      })
-    },
-
-    async findUnique(primaryKey: string): Promise<InferSelectModel<T> | null> {
-      const db = await connect()
-
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("_changes", "readonly", {
-          durability: "relaxed",
-        })
-
-        const objectStore = transaction.objectStore("_changes").index("objectStoreObjectId")
-      })
-    },
-
-    async insert(params: InferInsertModel<T>): Promise<void> {
-      const db = await connect()
-
-      return new Promise((resolve, reject) => {
-        const values = Object.fromEntries(
-          Object.entries(params).map(([key, value]) => {
-            return [key, columns[key].mapToDriverValue(value)]
-          }),
+    for (const change of changes) {
+      if (change.type === "insert") {
+        objectMap.set(
+          change.objectId,
+          Object.fromEntries(
+            Object.entries(change.object).map(([key, value]) => [
+              key,
+              columns[key].mapFromDriverValue(value),
+            ]),
+          ),
         )
+      }
 
-        const transaction = db.transaction("_changes", "readwrite", { durability: "relaxed" })
-        const objectStore = transaction.objectStore("_changes")
-
-        const request = objectStore.add({
-          object: values,
-          objectId: values[primaryKey],
-          objectStore: tableName,
-          objectStoreObjectId: [tableName, values[primaryKey]],
-          synced: false,
-          syncId: crypto.randomUUID(),
-          type: "insert",
+      if (change.type === "update") {
+        const prev = objectMap.get(change.objectId)
+        objectMap.set(change.objectId, {
+          ...prev,
+          ...Object.fromEntries(
+            Object.entries(change.snapShot).map(([key, value]) => [
+              key,
+              columns[key].mapFromDriverValue(value),
+            ]),
+          ),
         })
+      }
 
-        request.onsuccess = function () {
-          window.dispatchEvent(new CustomEvent("sync-base", { detail: { id: values.id } }))
-          resolve()
-        }
+      if (change.type === "delete") {
+        objectMap.delete(change.objectId)
+      }
+    }
 
-        request.onerror = function () {
-          reject(request.error)
-        }
-      })
-    },
+    return Array.from(objectMap.values())
+  }
+}
+
+type DeleteDependencies<T extends Table> = {
+  db: DB
+  table: T
+}
+
+type DeleteParams = { id: string }
+
+export function _delete<T extends Table>({ db, table }: DeleteDependencies<T>) {
+  return async ({ id }: DeleteParams) => {
+    const tableName = getTableName(table)
+
+    await db.addChange({
+      change: {
+        objectId: id,
+        objectStore: tableName,
+        objectStoreObjectId: [tableName, id],
+        synced: false,
+        syncId: crypto.randomUUID(),
+        type: "delete",
+      },
+    })
+  }
+}
+
+type InsertDependencies<T extends Table> = {
+  db: DB
+  table: T
+}
+
+type InsertParams<T extends Table> = InferInsertModel<T>
+
+export function _insert<T extends Table>({ db, table }: InsertDependencies<T>) {
+  return async (params: InsertParams<T>) => {
+    const tableName = getTableName(table)
+    const columns = getTableColumns(table)
+
+    const values = Object.fromEntries(
+      Object.entries(params).map(([key, value]) => {
+        return [key, columns[key].mapToDriverValue(value)]
+      }),
+    ) as InferInsertModel<T>
+
+    const primaryKey = Object.values(columns).find((column) => column.primary)!
+      .name as keyof typeof values
+
+    const id = values[primaryKey] as string
+
+    await db.addChange({
+      change: {
+        object: values,
+        objectId: id,
+        objectStore: tableName,
+        objectStoreObjectId: [tableName, id],
+        synced: false,
+        syncId: crypto.randomUUID(),
+        type: "insert",
+      },
+    })
   }
 }

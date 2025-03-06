@@ -4,9 +4,9 @@ import { Index } from "solid-js"
 
 import { sb } from "~/sb-client"
 
-let getTodos = query(async () => await sb.todos.findMany(), "getTodos")
+const getTodos = query(async () => await sb.todos.findMany(), "getTodos")
 
-let addTodoAction = action(async (formData: FormData) => {
+const addTodoAction = action(async (formData: FormData) => {
   await sb.todos.insert({
     description: String(formData.get("description")),
     id: crypto.randomUUID(),
@@ -15,16 +15,16 @@ let addTodoAction = action(async (formData: FormData) => {
   return new Response("success", { status: 200 })
 }, "addTodo")
 
-let deleteTodo = action(async (formData: FormData) => {
-  await sb.todos.delete(String(formData.get("id")))
+const deleteTodo = action(async (formData: FormData) => {
+  await sb.todos.delete({ id: String(formData.get("id")) })
   return { success: true }
 }, "deleteTodo")
 
 export default function Home() {
-  let todos = createAsync(() => getTodos())
-  let submit = useAction(addTodoAction)
+  const todos = createAsync(() => getTodos())
+  const submit = useAction(addTodoAction)
 
-  let handleSubmit = (event: Event) => {
+  const handleSubmit = (event: Event) => {
     event.preventDefault()
     submit(new FormData(event.target as HTMLFormElement))
     event.target.reset()
